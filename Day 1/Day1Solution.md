@@ -19,129 +19,16 @@ jupyter:
 Let's try out a brute force method in Julia
 
 ```julia
-using DataFrames, Distributions, Optim, Plots, Random, Statistics;
+using DataFrames, Optim, Plots
 ```
 
 ```julia
 using Day1;
 ```
 
-```julia
-# function toroid_neighbors(
-#     selection::Tuple{Int, Int},
-#     world_size::Tuple{Int, Int}
-# )::NTuple{5, Tuple{Int, Int}}
-#     i, j = selection
-#     M, N = world_size
-#     base_selection = (
-#         (i - 1, j),
-#         (i, j - 1),
-#         (i, j),
-#         (i, j + 1),
-#         (i + 1, j)
-#     )
-    
-#     mod_sel = map(
-#         x -> (x[1] % M, x[2] % N),
-#         base_selection
-#     )
-#     complement = map(
-#         x -> (
-#             x[1] > 0 ? x[1] : M + x[1],
-#             x[2] > 0 ? x[2] : N + x[2]
-#         ),
-#         mod_sel
-#     )
-# end
-```
+At the start of the world clock, we'll use a Bernoulli distribtion to initialize the state of the world. At this point, everyone, in isolation, will decide if the world if flat or round probabilistically (controlled by `prob` below). Then, we'll start to evolve the world. At each step in time, we'll choose a citizen and that citizen will query their nearest neighbors. Since the world is actually a torus, everyone will always have 4 neighbors. Then, once everyone has checked their Facebook wall, the group will colectively update their opinions based on the vote of the majority. Then time will step again.
 
-Let's imagine everyone decides their opinion on whether the world is flat or round at the start of time. In this, if a person votes 1, the world is round and a zero means the world is flat. We can model each individual using a Bernoulli trial with their probability of having that opinion.
-
-```julia
-# function start_world(
-#     world_size::Tuple{Int, Int},
-#     prob_round::Number,
-#     seed::Int
-# )::Matrix{Bool}
-#     Random.seed!(seed)
-#     prob_matrix = prob_round * ones(world_size)
-#     return map(rand, map(Bernoulli, prob_matrix))
-# end
-```
-
-Now we need a model for a time step. Given a certain citizen, they look around their neighbors, check their Facebook pages, and then change their opinions so that they fit in with their local bubble.
-
-```julia
-# function vote_results(
-#     prior_state::Matrix{Bool},
-#     citizen_coord::Tuple{Int, Int}
-# )
-#     selection_elements = toroid_neighbors(
-#         citizen_coord, size(prior_state)
-#     )
-#     vote_sum = sum([prior_state[i, j] for (i, j) in selection_elements])
-#     vote_result = (vote_sum >= 3) ? 1 : 0
-    
-#     new_state = copy(prior_state)
-#     for (i, j) in selection_elements
-#         new_state[i, j] = vote_result
-#     end
-#     return new_state
-# end
-```
-
-In the function below, we set up the mechanism of selecting a citizen and having them vote.
-
-```julia
-# function evolve_world(starting_state::Matrix{Bool}, seed::Int)::Matrix{Bool}
-#     Random.seed!(seed)
-#     states = [starting_state,]
-#     new_state = starting_state
-#     world_shape = size(starting_state)
-#     citizen_pick = (
-#         rand(1:world_shape[1]), rand(1:world_shape[2])
-#     )
-#     new_state = vote_results(new_state, citizen_pick)
-# end
-```
-
-I don't actually want to track the full state of the world at every time step (especially if I want to look at full grids), so instead I'll track the progress towards consensus that the world is indeed round.
-
-```julia
-# function track_average_opinion(
-#     starting_state::Matrix{Bool},
-#     tfinal::Int
-# )::Vector{Float64}
-#     mean_opinions = [mean(starting_state)]
-#     new_state = starting_state
-#     for t_seed in 1:tfinal
-#         new_state = evolve_world(new_state, t_seed)
-#         push!(mean_opinions, mean(new_state))
-#     end
-#     return mean_opinions
-# end
-```
-
-And now, I'll actually carry out a full set of world evolutions along with averaging over initial states. Because of how the seed was set, the same citizens will be voting over the time evolution, but this should be a reasonable sampling routine.
-
-```julia
-# function world_evolution(
-#     world_size::Tuple{Int, Int},
-#     t_final::Int,
-#     start_prob::Number,
-#     num_trials::Int
-# )::Tuple{Vector{Float64}, Vector{Float64}}
-#     initial_states = [
-#         start_world(world_size, start_prob, seed)
-#         for seed in 1:num_trials
-#     ]
-#     avg_opinion_traces = map(
-#         x -> track_average_opinion(x, t_final),
-#         initial_states
-#     )
-#     return (mean(avg_opinion_traces), std(avg_opinion_traces))
-# end
-```
+I'll carry out this exercise over many different initial states of the world, controlled by the `num_shots` parameter below. I'll also run this for `t_final` number of time steps. I don't actually want to track each individual's vote, so at the end of a full time trace, I'll collapse the data down and track the fraction that agrees that the earth is round.
 
 ```julia
 t_final = 4000;
